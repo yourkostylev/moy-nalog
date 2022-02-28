@@ -1,4 +1,4 @@
-const fetch = require('cross-fetch')
+const axios = require('axios')
 
 /**
  * Добавление продаж / создание чеков прихода
@@ -62,16 +62,16 @@ class NalogAPI {
   auth (login, password) {
     if (this.authPromise) { return this.authPromise }
 
-    this.authPromise = fetch(this.apiUrl + '/auth/lkfl', {
-      method: 'POST',
+    this.authPromise = axios(this.apiUrl + '/auth/lkfl', {
+      method: 'post',
       headers: {
         accept: 'application/json, text/plain, */*',
         'accept-language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
         'content-type': 'application/json',
+        referrer: 'https://lknpd.nalog.ru/',
+        referrerPolicy: 'strict-origin-when-cross-origin',
       },
-      referrer: 'https://lknpd.nalog.ru/',
-      referrerPolicy: 'strict-origin-when-cross-origin',
-      body: JSON.stringify({
+      data: JSON.stringify({
         username: login,
         password: password,
         deviceInfo: {
@@ -83,14 +83,14 @@ class NalogAPI {
           }
         }
       })
-    }).then(r => r.json()).then(response => {
-      if (!response.refreshToken) {
-        throw new Error((response.message || 'Не получилось авторизоваться'))
+    }).then(response => {
+      if (!response.data.refreshToken) {
+        throw new Error((response.data.message || 'Не получилось авторизоваться'))
       }
-      this.INN = response.profile.inn
-      this.token = response.token
-      this.tokenExpireIn = response.tokenExpireIn
-      this.refreshToken = response.refreshToken
+      this.INN = response.data.profile.inn
+      this.token = response.data.token
+      this.tokenExpireIn = response.data.tokenExpireIn
+      this.refreshToken = response.data.refreshToken
       return response
     }).catch(err => {
       throw err
@@ -125,22 +125,22 @@ class NalogAPI {
       refreshToken: this.refreshToken
     }
 
-    const response = await fetch(this.apiUrl + '/auth/token', {
-      method: 'POST',
+    const response = await axios(this.apiUrl + '/auth/token', {
+      method: 'post',
       headers: {
         accept: 'application/json, text/plain, */*',
         'accept-language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
         'content-type': 'application/json',
+        referrer: 'https://lknpd.nalog.ru/sales',
+        referrerPolicy: 'strict-origin-when-cross-origin',
       },
-      referrer: 'https://lknpd.nalog.ru/sales',
-      referrerPolicy: 'strict-origin-when-cross-origin',
-      body: JSON.stringify(tokenPayload)
-    }).then(r => r.json()).catch(console.error)
+      data: JSON.stringify(tokenPayload)
+    }).catch(console.error)
 
-    if (response.refreshToken) { this.refreshToken = response.refreshToken }
+    if (response.data.refreshToken) { this.refreshToken = response.data.refreshToken }
 
-    this.token = response.token
-    this.tokenExpireIn = response.tokenExpireIn
+    this.token = response.data.token
+    this.tokenExpireIn = response.data.tokenExpireIn
 
     return this.token
   }
@@ -148,12 +148,12 @@ class NalogAPI {
   /**
    * Вызов метода api
    * @param  {string} endpoint - url метода без слэша в начале (например `user`)
-   * @param  {object} payload - данные для отправки в body
-   * @param  {enum} method='GET'
+   * @param  {object} payload - данные для отправки в data
+   * @param  {enum} method='get'
    * @returns {Promise(object)} - json ответа сервера
    */
-  async call (endpoint, payload, method = 'GET') {
-    if (payload) { method = 'POST' }
+  async call (endpoint, payload, method = 'get') {
+    if (payload) { method = 'post' }
 
     const params = {
       method: method,
@@ -162,15 +162,15 @@ class NalogAPI {
         accept: 'application/json, text/plain, */*',
         'accept-language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
         'content-type': 'application/json',
+        referrer: 'https://lknpd.nalog.ru/sales/create',
+        referrerPolicy: 'strict-origin-when-cross-origin',
       },
-      referrer: 'https://lknpd.nalog.ru/sales/create',
-      referrerPolicy: 'strict-origin-when-cross-origin',
-      body: JSON.stringify(payload)
+      data: JSON.stringify(payload)
     }
 
-    if (method === 'GET') delete params.body
+    if (method === 'get') delete params.data
 
-    return fetch(this.apiUrl + '/' + endpoint, params).then(r => r.json())
+    return axios(this.apiUrl + '/' + endpoint, params)
   }
 
   /**
@@ -198,17 +198,17 @@ class NalogAPI {
       totalAmount: (amount * quantity).toFixed(2)
     })
 
-    if (!response || !response.approvedReceiptUuid) {
+    if (!response || !response.data.approvedReceiptUuid) {
       return { error: response }
     }
 
     const result = {
-      id: response.approvedReceiptUuid,
-      approvedReceiptUuid: response.approvedReceiptUuid,
-      jsonUrl: `${this.apiUrl}/receipt/${this.INN}/${response.approvedReceiptUuid}/json`,
-      printUrl: `${this.apiUrl}/receipt/${this.INN}/${response.approvedReceiptUuid}/print`
+      id: response.data.approvedReceiptUuid,
+      approvedReceiptUuid: response.data.approvedReceiptUuid,
+      jsonUrl: `${this.apiUrl}/receipt/${this.INN}/${response.data.approvedReceiptUuid}/json`,
+      printUrl: `${this.apiUrl}/receipt/${this.INN}/${response.data.approvedReceiptUuid}/print`
     }
-    result.data = await fetch(result.jsonUrl).then(r => r.json())
+    result.data = await axios(result.jsonUrl)
 
     return result
   }
