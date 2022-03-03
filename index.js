@@ -23,7 +23,7 @@ const axios = require('axios')
  *   ```console.log(authPromise)```
  */
 class NalogAPI {
-  constructor ({ login, password, autologin = true }) {
+  constructor ({ login, password, autologin = true, proxy = false }) {
     if (autologin && (!login || !password)) {
       throw new SyntaxError('NalogAPI required login+password for auth')
     }
@@ -41,7 +41,7 @@ class NalogAPI {
     this.refreshToken = ''
 
     if (autologin) {
-      this.auth(login, password)
+      this.auth(login, password, proxy)
     }
   }
 
@@ -59,11 +59,12 @@ class NalogAPI {
    * @param {string} password
    * @returns {Promise(object)} - ответ метода /auth/
    */
-  auth (login, password) {
+  auth (login, password, proxy) {
     if (this.authPromise) { return this.authPromise }
 
     this.authPromise = axios(this.apiUrl + '/auth/lkfl', {
       method: 'post',
+      proxy,
       headers: {
         accept: 'application/json, text/plain, */*',
         'accept-language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -103,7 +104,7 @@ class NalogAPI {
    * Получение token по refreshToken
    * @returns {Promise(string)}
    */
-  async getToken () {
+  async getToken(proxy) {
     if (this.token && this.tokenExpireIn && new Date().getTime() - 60 * 1000 < new Date(this.tokenExpireIn).getTime()) {
       return this.token
     }
@@ -127,6 +128,7 @@ class NalogAPI {
 
     const response = await axios(this.apiUrl + '/auth/token', {
       method: 'post',
+      proxy,
       headers: {
         accept: 'application/json, text/plain, */*',
         'accept-language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -152,13 +154,12 @@ class NalogAPI {
    * @param  {enum} method='get'
    * @returns {Promise(object)} - json ответа сервера
    */
-  async call (endpoint, payload, method = 'get') {
-    if (payload) { method = 'post' }
-
+  async call (endpoint, payload, proxy) {
     const params = {
-      method: method,
+      method: payload ? 'post' : 'get',
+      proxy,
       headers: {
-        authorization: 'Bearer ' + (await this.getToken()),
+        authorization: 'Bearer ' + (await this.getToken(proxy)),
         accept: 'application/json, text/plain, */*',
         'accept-language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
         'content-type': 'application/json',
@@ -168,7 +169,7 @@ class NalogAPI {
       data: JSON.stringify(payload)
     }
 
-    if (method === 'get') delete params.data
+    if (!payload) delete params.data
 
     return axios(this.apiUrl + '/' + endpoint, params)
   }
@@ -180,7 +181,7 @@ class NalogAPI {
    * @param  {} amount - стоимость
    * @returns {Promise({id,printUrl,jsonUrl,data,approvedReceiptUuid})} - информация о созданном чеке, либо об ошибке
    */
-  async addIncome ({ date = new Date(), name, quantity = 1, amount }) {
+  async addIncome ({ date = new Date(), name, quantity = 1, amount }, proxy = false) {
     const response = await this.call('income', {
       paymentType: 'CASH',
       ignoreMaxTotalIncomeRestriction: false,
@@ -196,7 +197,7 @@ class NalogAPI {
       }],
 
       totalAmount: (amount * quantity).toFixed(2)
-    })
+    }, proxy)
 
     if (!response || !response.data.approvedReceiptUuid) {
       return { error: response }
@@ -208,7 +209,7 @@ class NalogAPI {
       jsonUrl: `${this.apiUrl}/receipt/${this.INN}/${response.data.approvedReceiptUuid}/json`,
       printUrl: `${this.apiUrl}/receipt/${this.INN}/${response.data.approvedReceiptUuid}/print`
     }
-    result.data = await axios(result.jsonUrl)
+    result.data = await axios(result.jsonUrl, { proxy })
 
     return result
   }
